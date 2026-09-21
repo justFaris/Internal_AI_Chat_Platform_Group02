@@ -1,0 +1,5 @@
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+allowed_cidrs       = ["203.0.113.10/32"]   # your public IP /32 + teammates
+# location          = "centralus"
+# vm_size           = "Standard_D2s_v7"
+# ssh_public_key_path = "~/.ssh/openwebui.pub"
