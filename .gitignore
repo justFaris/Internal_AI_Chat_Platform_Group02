@@ -9,3 +9,5 @@ crash.log
 *.pem
 *.key
 id_*
+.env
+.venv/

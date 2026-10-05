@@ -1,0 +1,17 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "80:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - OPENAI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENABLE_OLLAMA_API=false
+    restart: unless-stopped
+
+volumes:
+  open-webui-data:
