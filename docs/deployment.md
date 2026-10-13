@@ -28,7 +28,9 @@ az account show -o table
 
 ## 3. Terraform Configuration
 
-Navigate to the Terraform directory:
+**Environment: Windows PowerShell**
+
+Navigate to the Terraform directory from the project root:
 
 ```powershell
 cd terraform
@@ -45,7 +47,9 @@ Do not commit sensitive configuration values to Git.
 
 ## 4. Terraform Deployment
 
-Run the following commands in Windows PowerShell:
+**Environment: Windows PowerShell**
+
+From the Terraform directory, run:
 
 ```powershell
 terraform init
@@ -58,7 +62,9 @@ Terraform provisions the Azure infrastructure, including the Resource Group, net
 
 ## 5. Connect to the Azure VM
 
-Use SSH Key Authentication from Windows PowerShell:
+**Environment: Windows PowerShell**
+
+Use SSH Key Authentication:
 
 ```powershell
 ssh -i "$HOME\.ssh\openwebui" "azureuser@$(terraform output -raw public_ip)"
@@ -68,6 +74,8 @@ Run this command from the Terraform directory.
 
 ## 6. Prepare the Project
 
+**Environment: Azure Ubuntu VM**
+
 Transfer or clone the project repository to the Azure VM.
 
 The project directory is:
@@ -76,15 +84,23 @@ The project directory is:
 ~/Internal_AI_Chat_Platform_Group02
 ```
 
+Navigate to the project root:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02
+```
+
 ## 7. VM Setup
 
-Run the setup script on the Azure VM:
+**Environment: Azure Ubuntu VM**
+
+From the project root, run:
 
 ```bash
 bash scripts/vm_setup.sh
 ```
 
-The script installs Docker, Docker Compose v1, and Git, and enables the Docker service.
+The current setup script installs Docker, Docker Compose v1, and Git, and enables the Docker service.
 
 Install Docker Compose v2 separately:
 
@@ -100,12 +116,16 @@ docker compose version
 
 A new SSH session may be required after adding the user to the Docker group.
 
+The setup script currently requires a separate Docker Compose v2 installation. Updating this dependency is part of the Bash automation improvements.
+
 ## 8. Environment Configuration
+
+**Environment: Azure Ubuntu VM**
 
 Navigate to the Docker directory:
 
 ```bash
-cd docker
+cd ~/Internal_AI_Chat_Platform_Group02/docker
 ```
 
 Create a local `.env` file using the required variables:
@@ -131,7 +151,9 @@ Never commit `.env` or actual API keys to Git.
 
 ## 9. Validate Docker Compose
 
-Verify the configuration:
+**Environment: Azure Ubuntu VM**
+
+From the Docker directory, verify the configuration:
 
 ```bash
 docker compose config --quiet
@@ -141,7 +163,9 @@ The command should complete without errors.
 
 ## 10. Deploy Open WebUI
 
-Run:
+**Environment: Azure Ubuntu VM**
+
+From the Docker directory, run:
 
 ```bash
 docker compose pull
@@ -151,16 +175,24 @@ docker compose ps
 
 The application uses host port `80` and container port `8080`.
 
-Verify the container reaches the `healthy` state.
+Verify that the container reaches the `healthy` state.
 
 ## 11. Access Open WebUI
 
-For secure administrative and demonstration access, use an SSH Tunnel from Windows PowerShell.
+**Environment: Windows PowerShell**
 
-Navigate to the Terraform directory and run:
+For encrypted administrative and demonstration access, use an SSH Tunnel.
+
+Navigate to the Terraform directory:
 
 ```powershell
-ssh -i "$HOME\.ssh\openwebui" -L 8080:localhost:80 "azureuser@$(terraform output -raw public_ip)"
+cd C:\team-project\Internal_AI_Chat_Platform_Group02\terraform
+```
+
+Start the SSH Tunnel:
+
+```powershell
+ssh -i "$HOME\.ssh\openwebui" -o ExitOnForwardFailure=yes -L 8080:localhost:80 "azureuser@$(terraform output -raw public_ip)"
 ```
 
 Keep the SSH session open.
@@ -177,21 +209,39 @@ The current deployment also binds HTTP port 80 to the VM network interfaces. Azu
 
 ## 12. Deployment Validation
 
-From the project root on the Azure VM:
+**Environment: Azure Ubuntu VM**
+
+Navigate to the project root:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02
+```
+
+Run the validation script:
 
 ```bash
 bash scripts/validate.sh
 ```
 
-Successful validation returns:
+The successfully tested deployment returned:
 
 ```text
 Result: 0 failed, 0 warnings
 ```
 
+The validation result applies to the checks implemented in `validate.sh`.
+
 ## 13. Restart Open WebUI
 
-Restart the application:
+**Environment: Azure Ubuntu VM**
+
+Navigate to the project root:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02
+```
+
+Restart the existing application:
 
 ```bash
 bash scripts/restart.sh
@@ -203,9 +253,19 @@ Recreate the container using Docker Compose v2:
 bash scripts/restart.sh --recreate
 ```
 
+The `--recreate` option uses Docker Compose to create or recreate the application container.
+
 The script performs application validation after restarting.
 
 ## 14. Cleanup
+
+**Environment: Azure Ubuntu VM**
+
+Navigate to the project root:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02
+```
 
 Stop and remove the application container and Compose network:
 
@@ -227,7 +287,17 @@ docker_open-webui-data
 
 Testing confirmed that user accounts, conversation history, and uploaded documents remained available after application restart, container recreation, cleanup and redeployment, and Azure VM restart.
 
+The Docker named volume is separate from the attached Azure managed data disk.
+
 ## 16. Troubleshooting
+
+**Environment: Azure Ubuntu VM**
+
+Navigate to the Docker directory:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02/docker
+```
 
 Check the container status:
 
@@ -241,15 +311,33 @@ View application logs:
 docker compose logs --tail=100 open-webui
 ```
 
-Check the health endpoint:
+Check the application health endpoint using an HTTP GET request:
 
 ```bash
-curl -I http://localhost/health
+curl -fsS http://localhost/health
 ```
 
-Run the validation script from the project root to verify the deployment.
+To run the full deployment validation, navigate to the project root:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02
+```
+
+Then run:
+
+```bash
+bash scripts/validate.sh
+```
 
 ## 17. Stop the Application
+
+**Environment: Azure Ubuntu VM**
+
+Navigate to the Docker directory:
+
+```bash
+cd ~/Internal_AI_Chat_Platform_Group02/docker
+```
 
 To stop the application while preserving persistent storage:
 
@@ -258,3 +346,15 @@ docker compose down
 ```
 
 The Docker volume remains available for subsequent deployments.
+
+## 18. Deployment Notes
+
+- Azure infrastructure is managed using Terraform.
+- The VM environment is prepared using Bash automation.
+- Docker Compose v2 is used for application deployment and lifecycle management.
+- Open WebUI is accessed through an SSH Tunnel for administrative testing.
+- Application data is preserved using a persistent Docker volume.
+- Deployment validation is performed using `validate.sh`.
+- The first-time deployment workflow has been documented, but complete end-to-end automation from a fresh VM has not yet been verified.
+- HTTPS/TLS is not currently configured for direct web access.
+- The Gemini API is an external AI service, so data sent to the model is processed outside the Azure VM.
