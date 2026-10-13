@@ -2,196 +2,146 @@
 
 ## Overview
 
-This guide explains how to deploy and run the Internal AI Chat Platform using Azure, Terraform, Docker Compose, and Open WebUI.
+This guide explains how to deploy, configure, and operate the Internal AI Chat Platform using Microsoft Azure, Terraform, Docker Compose, Bash scripts, and Open WebUI.
 
 ## 1. Prerequisites
 
-Install the following tools:
+Required tools:
 
 - Azure CLI
 - Terraform
 - Git
-- Docker
-- Docker Compose
-- SSH client
-- WSL when working from Windows
+- SSH Client
+- Docker Engine
+- Docker Compose v2
 
-Verify the tools:
-
-```bash
-az --version
-terraform -version
-git --version
-docker --version
-docker compose version
-```
-
-If the environment uses the legacy Docker Compose command, verify it using:
-
-```bash
-docker-compose --version
-```
+Windows 11 is used for Azure and Terraform administration, while Ubuntu 24.04 LTS hosts Open WebUI.
 
 ## 2. Azure Login
 
-Sign in to Azure:
+Sign in to Azure using Windows PowerShell:
 
-```bash
+```powershell
 az login
-```
-
-Verify the active subscription:
-
-```bash
 az account show -o table
 ```
 
 ## 3. Terraform Configuration
 
-Go to the Terraform directory:
+Navigate to the Terraform directory:
 
-```bash
+```powershell
 cd terraform
 ```
 
-The Terraform configuration requires values for:
-
-- `subscription_id`
-- `allowed_cidrs`
-
-These values can be provided through a local `terraform.tfvars` file.
-
-Example:
+Configure the required variables locally in `terraform.tfvars`:
 
 ```hcl
 subscription_id = "<your-subscription-id>"
 allowed_cidrs   = ["<approved-public-ip>/32"]
 ```
 
-Do not commit environment-specific or sensitive configuration values to the repository.
+Do not commit sensitive configuration values to Git.
 
 ## 4. Terraform Deployment
 
-Initialize Terraform:
+Run the following commands in Windows PowerShell:
 
-```bash
+```powershell
 terraform init
-```
-
-Validate the configuration:
-
-```bash
 terraform validate
-```
-
-Review the deployment plan:
-
-```bash
 terraform plan
-```
-
-Deploy the infrastructure:
-
-```bash
 terraform apply
 ```
 
-Terraform provisions the main Azure resources, including:
+Terraform provisions the Azure infrastructure, including the Resource Group, networking resources, NSG, Public IP, Ubuntu VM, and managed data disk.
 
-- Resource Group
-- Virtual Network
-- Subnet
-- Network Security Group
-- Public IP
-- Network Interface
-- Ubuntu Linux Virtual Machine
-- Managed Data Disk
+## 5. Connect to the Azure VM
 
-## 5. Connect to the VM
+Use SSH Key Authentication from Windows PowerShell:
 
-Connect using SSH:
-
-```bash
-ssh <username>@<public-ip>
+```powershell
+ssh -i "$HOME\.ssh\openwebui" "azureuser@$(terraform output -raw public_ip)"
 ```
 
-SSH password authentication is disabled and access uses an SSH public key.
+Run this command from the Terraform directory.
 
-## 6. Clone the Project
+## 6. Prepare the Project
 
-After connecting to the VM, clone the project repository:
+Transfer or clone the project repository to the Azure VM.
 
-```bash
-git clone <repository-url>
-```
+The project directory is:
 
-Move into the project directory:
-
-```bash
-cd Internal_AI_Chat_Platform_Group02
+```text
+~/Internal_AI_Chat_Platform_Group02
 ```
 
 ## 7. VM Setup
 
-Run the VM setup script:
+Run the setup script on the Azure VM:
 
 ```bash
 bash scripts/vm_setup.sh
 ```
 
-The script:
+The script installs Docker, Docker Compose v1, and Git, and enables the Docker service.
 
-- Updates Ubuntu packages
-- Installs Docker
-- Installs Docker Compose
-- Installs Git
-- Enables and starts Docker
-- Adds the current user to the Docker group
+Install Docker Compose v2 separately:
 
-After the Docker group change, a new login session may be required before Docker can be used without `sudo`.
+```bash
+sudo apt-get install -y docker-compose-v2
+```
+
+Verify the installation:
+
+```bash
+docker compose version
+```
+
+A new SSH session may be required after adding the user to the Docker group.
 
 ## 8. Environment Configuration
 
-Go to the Docker directory:
+Navigate to the Docker directory:
 
 ```bash
 cd docker
 ```
 
-Create a local `.env` file:
+Create a local `.env` file using the required variables:
 
 ```env
 WEBUI_SECRET_KEY=<your-secret-key>
-OPENAI_API_KEY=<your-api-key>
+OPENAI_API_KEY=<your-gemini-api-key>
 ```
 
-The `.env` file is excluded from Git and must not be committed to the repository.
-
-A secret key can be generated using:
+Generate a secret key using:
 
 ```bash
 openssl rand -hex 32
 ```
 
+Protect the environment file:
+
+```bash
+chmod 600 .env
+```
+
+Never commit `.env` or actual API keys to Git.
+
 ## 9. Validate Docker Compose
 
-For Docker Compose v2:
+Verify the configuration:
 
 ```bash
-docker compose config
+docker compose config --quiet
 ```
 
-If the environment provides the legacy Docker Compose command instead:
-
-```bash
-docker-compose config
-```
-
-The configuration should complete without errors.
+The command should complete without errors.
 
 ## 10. Deploy Open WebUI
 
-Using Docker Compose v2:
+Run:
 
 ```bash
 docker compose pull
@@ -199,57 +149,41 @@ docker compose up -d
 docker compose ps
 ```
 
-If the environment uses the legacy command:
+The application uses host port `80` and container port `8080`.
 
-```bash
-docker-compose pull
-docker-compose up -d
-docker-compose ps
-```
-
-The current Docker configuration maps:
-
-```text
-Host port 80 → Open WebUI container port 8080
-```
+Verify the container reaches the `healthy` state.
 
 ## 11. Access Open WebUI
 
-For local testing:
+For secure administrative and demonstration access, use an SSH Tunnel from Windows PowerShell.
 
-```text
-http://localhost
+Navigate to the Terraform directory and run:
+
+```powershell
+ssh -i "$HOME\.ssh\openwebui" -L 8080:localhost:80 "azureuser@$(terraform output -raw public_ip)"
 ```
 
-For an Azure deployment, access the application using the VM public IP from an approved network:
+Keep the SSH session open.
+
+Access Open WebUI through the browser:
 
 ```text
-http://<public-ip>
+http://localhost:8080
 ```
 
-The Azure NSG restricts web and SSH access to approved CIDR ranges.
+The SSH Tunnel encrypts traffic between Windows and the Azure VM.
+
+The current deployment also binds HTTP port 80 to the VM network interfaces. Azure NSG restricts inbound access to approved IP addresses. Direct HTTP connections are not encrypted.
 
 ## 12. Deployment Validation
 
-Return to the project root and run:
+From the project root on the Azure VM:
 
 ```bash
-cd ..
-./scripts/validate.sh
+bash scripts/validate.sh
 ```
 
-The validation script checks:
-
-- Docker availability
-- Docker Compose availability
-- Docker Compose configuration
-- Open WebUI container status
-- Persistent storage
-- Port 80 availability
-- Open WebUI health endpoint
-- `.env` availability
-
-A successful local validation returns:
+Successful validation returns:
 
 ```text
 Result: 0 failed, 0 warnings
@@ -257,53 +191,43 @@ Result: 0 failed, 0 warnings
 
 ## 13. Restart Open WebUI
 
-From the project root:
+Restart the application:
 
 ```bash
-./scripts/restart.sh
+bash scripts/restart.sh
 ```
 
-The script restarts Open WebUI, waits for the application to become available, and automatically runs `validate.sh`.
+Recreate the container using Docker Compose v2:
+
+```bash
+bash scripts/restart.sh --recreate
+```
+
+The script performs application validation after restarting.
 
 ## 14. Cleanup
 
-To stop the Docker stack safely:
+Stop and remove the application container and Compose network:
 
 ```bash
-./scripts/cleanup.sh
+bash scripts/cleanup.sh
 ```
 
-The default cleanup removes the running container and Docker network but keeps the persistent application data.
+The default cleanup preserves persistent application data.
 
-To remove Docker images:
-
-```bash
-./scripts/cleanup.sh --images
-```
-
-The persistent volume should only be deleted intentionally using:
-
-```bash
-./scripts/cleanup.sh --delete-volume
-```
+Do not use `--delete-volume` unless permanent data deletion is intended.
 
 ## 15. Persistent Data
 
-Open WebUI stores application data in the Docker volume:
+Open WebUI stores its application data in the Docker volume:
 
 ```text
-open-webui-data
+docker_open-webui-data
 ```
 
-Local testing confirmed that the administrator account remained available after cleanup and redeployment.
+Testing confirmed that user accounts, conversation history, and uploaded documents remained available after application restart, container recreation, cleanup and redeployment, and Azure VM restart.
 
 ## 16. Troubleshooting
-
-Go to the Docker directory:
-
-```bash
-cd docker
-```
 
 Check the container status:
 
@@ -311,7 +235,7 @@ Check the container status:
 docker compose ps
 ```
 
-View Open WebUI logs:
+View application logs:
 
 ```bash
 docker compose logs --tail=100 open-webui
@@ -320,30 +244,17 @@ docker compose logs --tail=100 open-webui
 Check the health endpoint:
 
 ```bash
-curl http://localhost/health
+curl -I http://localhost/health
 ```
 
-To run the complete deployment validation from the project root:
-
-```bash
-cd ..
-./scripts/validate.sh
-```
-
-If the container is still starting, wait for initialization to complete and check the logs again.
+Run the validation script from the project root to verify the deployment.
 
 ## 17. Stop the Application
 
-From the Docker directory, stop the application while keeping its persistent data:
+To stop the application while preserving persistent storage:
 
 ```bash
 docker compose down
 ```
 
-If the environment uses the legacy Docker Compose command:
-
-```bash
-docker-compose down
-```
-
-The `open-webui-data` volume remains available for the next deployment.
+The Docker volume remains available for subsequent deployments.
