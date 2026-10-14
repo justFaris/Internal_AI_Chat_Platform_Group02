@@ -1,360 +1,271 @@
-# Deployment Guide
+# Deployment
 
-## Overview
+How to build this environment from nothing. Verified by a full
+`terraform destroy` and rebuild; see [Reproducibility](#reproducibility).
 
-This guide explains how to deploy, configure, and operate the Internal AI Chat Platform using Microsoft Azure, Terraform, Docker Compose, Bash scripts, and Open WebUI.
+## Prerequisites
 
-## 1. Prerequisites
+| Tool | Version used |
+|---|---|
+| Azure CLI | logged in to the target subscription |
+| Terraform | 1.6+ (azurerm provider 4.x) |
+| SSH client | key-based auth only |
+| An Azure OpenAI-capable subscription | `gpt-5-mini` in `centralus` |
 
-Required tools:
+You need your own public IP in the allow-list. Find it with `curl https://api.ipify.org`.
 
-- Azure CLI
-- Terraform
-- Git
-- SSH Client
-- Docker Engine
-- Docker Compose v2
+## 1. Configuration
 
-Windows 11 is used for Azure and Terraform administration, while Ubuntu 24.04 LTS hosts Open WebUI.
-
-## 2. Azure Login
-
-Sign in to Azure using Windows PowerShell:
-
-```powershell
-az login
-az account show -o table
+```bash
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
 
-## 3. Terraform Configuration
-
-**Environment: Windows PowerShell**
-
-Navigate to the Terraform directory from the project root:
-
-```powershell
-cd terraform
-```
-
-Configure the required variables locally in `terraform.tfvars`:
+Edit `terraform.tfvars`:
 
 ```hcl
 subscription_id = "<your-subscription-id>"
-allowed_cidrs   = ["<approved-public-ip>/32"]
+
+# Your public IP plus any teammate IPs. Everything else is denied.
+allowed_cidrs = ["203.0.113.10/32"]
+
+# Path to the SSH *public* key that will be injected into the VM.
+ssh_public_key_path = "~/.ssh/openwebui.pub"
 ```
 
-Do not commit sensitive configuration values to Git.
+Optional overrides: `project_name`, `location`, `vm_size`, `os_disk_size_gb`,
+`data_disk_size_gb`, `enable_auto_shutdown`, `auto_shutdown_time`, `tags`.
 
-## 4. Terraform Deployment
+`terraform.tfvars` is git-ignored — never commit it.
 
-**Environment: Windows PowerShell**
+### Addresses are never written down
 
-From the Terraform directory, run:
+Two kinds of address change, and both are handled the same way: **look them up,
+never copy them.**
 
-```powershell
+| Address | Why it moves |
+|---|---|
+| The VM's public IP | Reallocated by Azure every time the resource group is destroyed and rebuilt |
+| Your own public IP | Many ISPs hand out a dynamic address, which can change mid-session |
+
+So no real address appears anywhere in this documentation. Examples use the
+RFC 5737 documentation ranges (`203.0.113.0/24`, `192.0.2.0/24`), and every
+command reads the current value at the moment it runs:
+
+```bash
+# The VM's address, straight from the deployment
+terraform -chdir=terraform output -raw public_ip
+
+# Your own address, to add to allowed_cidrs
+curl -s https://api.ipify.org
+```
+
+`allowed_cidrs` should list every address that legitimately needs access —
+yours, plus anyone else's who must reach the platform. Add them as you go and
+remove addresses that are no longer used. Because an admin's own address can
+change at any time, `scripts/10-harden.sh` accepts a **list** of CIDRs:
+
+```bash
+sudo bash scripts/10-harden.sh <first-ip>/32 <second-ip>/32
+```
+
+If you are locked out because your address changed, both the NSG *and* the host
+firewall will refuse you. Recovery is described under "Site unreachable" in
+[troubleshooting.md](troubleshooting.md).
+
+### SSH key
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/openwebui -C "openwebui"
+```
+
+Keep the private key safe. Losing it means losing the VM: password
+authentication is disabled by design.
+
+## 2. Infrastructure
+
+```bash
+cd terraform
 terraform init
-terraform validate
-terraform plan
-terraform apply
+terraform plan -out=tfplan
+terraform apply tfplan
 ```
 
-Terraform provisions the Azure infrastructure, including the Resource Group, networking resources, NSG, Public IP, Ubuntu VM, and managed data disk.
+Apply prints the outputs you need:
 
-## 5. Connect to the Azure VM
-
-**Environment: Windows PowerShell**
-
-Use SSH Key Authentication:
-
-```powershell
-ssh -i "$HOME\.ssh\openwebui" "azureuser@$(terraform output -raw public_ip)"
+```
+public_ip        = "203.0.113.10"        # documentation example, not a real address
+ssh_command      = "ssh -i ~/.ssh/openwebui azureuser@203.0.113.10"
+data_disk_device = "/dev/disk/azure/data/by-lun/0"
 ```
 
-Run this command from the Terraform directory.
+This creates the resource group, VNet, subnet, NSG, static public IP, NIC, VM,
+managed data disk, and the nightly shutdown schedule.
 
-## 6. Prepare the Project
+> **The resource group is a Terraform resource, but not everything inside it
+> is.** The Azure OpenAI account, Log Analytics workspace, data collection
+> endpoint, action group, and alert rules are created outside Terraform. See
+> [step 5](#5-monitoring) and the warning in `terraform/providers.tf`.
 
-**Environment: Azure Ubuntu VM**
+## 3. Prepare the VM
 
-Transfer or clone the project repository to the Azure VM.
-
-The project directory is:
-
-```text
-~/Internal_AI_Chat_Platform_Group02
-```
-
-Navigate to the project root:
+Copy the application files to the VM:
 
 ```bash
-cd ~/Internal_AI_Chat_Platform_Group02
+scp -r docker scripts azureuser@<public_ip>:~/app/
+ssh -i ~/.ssh/openwebui azureuser@<public_ip>
 ```
 
-## 7. VM Setup
-
-**Environment: Azure Ubuntu VM**
-
-From the project root, run:
+Then, on the VM:
 
 ```bash
-bash scripts/vm_setup.sh
+cd ~/app
+bash scripts/00-prepare.sh    # updates, UFW baseline, formats and mounts /mnt/data
+bash scripts/01-install-docker.sh
 ```
 
-The current setup script installs Docker, Docker Compose v1, and Git, and enables the Docker service.
+`00-prepare.sh` is idempotent: it formats the data disk only if it is empty, so
+re-running it on an existing VM will not destroy data.
 
-Install Docker Compose v2 separately:
+Verify the mount:
 
 ```bash
-sudo apt-get install -y docker-compose-v2
+df -h /mnt/data        # expect /dev/nvme1n2, 63G
 ```
 
-Verify the installation:
+## 4. Application
+
+### `.env`
 
 ```bash
-docker compose version
+cp docker/.env.example docker/.env
+chmod 600 docker/.env
 ```
 
-A new SSH session may be required after adding the user to the Docker group.
-
-The setup script currently requires a separate Docker Compose v2 installation. Updating this dependency is part of the Bash automation improvements.
-
-## 8. Environment Configuration
-
-**Environment: Azure Ubuntu VM**
-
-Navigate to the Docker directory:
+Fill it in. **Do not copy an address from anywhere else in this document** —
+take the current value from the Terraform output above, because the public IP is
+reallocated on every destroy and rebuild:
 
 ```bash
-cd ~/Internal_AI_Chat_Platform_Group02/docker
+# Read it rather than typing it, so a rebuild cannot leave a stale address:
+VM_IP=$(cd ../terraform && terraform output -raw public_ip)
+
+# The VM's public IP — Caddy issues its certificate for this address.
+SITE_ADDRESS=${VM_IP}
+
+# Browsers only. Add ;https://localhost if you also use the SSH tunnel.
+CORS_ALLOW_ORIGIN=https://${VM_IP}
+
+# Azure OpenAI
+OPENAI_API_BASE_URL=https://openwebui-aoai.openai.azure.com/openai/v1
+OPENAI_API_KEY=<key from: az cognitiveservices account keys list -g rg-openwebui -n openwebui-aoai>
+
+# openssl rand -base64 32
+WEBUI_SECRET_KEY=<generated>
 ```
 
-Create a local `.env` file using the required variables:
+`.env` must be mode `600` and is git-ignored.
 
-```env
-WEBUI_SECRET_KEY=<your-secret-key>
-OPENAI_API_KEY=<your-gemini-api-key>
-```
-
-Generate a secret key using:
+### Deploy
 
 ```bash
-openssl rand -hex 32
+bash scripts/02-deploy.sh
+bash scripts/03-validate.sh
 ```
 
-Protect the environment file:
+Open `https://<public_ip>` and accept the self-signed certificate warning. The
+first account to register becomes the administrator; sign-up then closes
+automatically, and `ENABLE_SIGNUP=false` keeps it closed.
+
+## 5. Azure OpenAI (not in Terraform)
 
 ```bash
-chmod 600 .env
+az cognitiveservices account create \
+  -g rg-openwebui -n openwebui-aoai --kind OpenAI --sku S0 -l centralus
+
+az cognitiveservices account deployment create \
+  -g rg-openwebui -n openwebui-aoai -d gpt-5-mini \
+  --model-name gpt-5-mini --model-version 2025-08-01 \
+  --sku-name GlobalStandard
 ```
 
-Never commit `.env` or actual API keys to Git.
-
-## 9. Validate Docker Compose
-
-**Environment: Azure Ubuntu VM**
-
-From the Docker directory, verify the configuration:
+## 6. Monitoring (not in Terraform)
 
 ```bash
-docker compose config --quiet
+# Log Analytics, with a hard cap on spend
+az monitor log-analytics workspace create \
+  -g rg-openwebui -n law-openwebui -l centralus --retention-time 30
+# then set workspaceCapping.dailyQuotaGB = 0.5 (see operations.md)
+
+# VM metrics -> workspace
+# Action group ag-openwebui -> faris@alfaifi.co
+# Metric alert rules: alert-vm-cpu, alert-vm-memlow, alert-vm-diskread, alert-vm-netin
 ```
 
-The command should complete without errors.
+Exact commands are in [operations.md](operations.md#monitoring).
 
-## 10. Deploy Open WebUI
-
-**Environment: Azure Ubuntu VM**
-
-From the Docker directory, run:
+## 7. Harden
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose ps
+sudo bash scripts/10-harden.sh <your-ip>/32
+docker compose -f docker/docker-compose.yml up -d --force-recreate
 ```
 
-The application uses host port `80` and container port `8080`.
+Pass your own CIDR. The script is idempotent, reloads sshd only after `sshd -t`
+passes, and refuses to continue if no `authorized_keys` is present.
 
-Verify that the container reaches the `healthy` state.
-
-## 11. Access Open WebUI
-
-**Environment: Windows PowerShell**
-
-For encrypted administrative and demonstration access, use an SSH Tunnel.
-
-Navigate to the Terraform directory:
-
-```powershell
-cd C:\team-project\Internal_AI_Chat_Platform_Group02\terraform
-```
-
-Start the SSH Tunnel:
-
-```powershell
-ssh -i "$HOME\.ssh\openwebui" -o ExitOnForwardFailure=yes -L 8080:localhost:80 "azureuser@$(terraform output -raw public_ip)"
-```
-
-Keep the SSH session open.
-
-Access Open WebUI through the browser:
-
-```text
-http://localhost:8080
-```
-
-The SSH Tunnel encrypts traffic between Windows and the Azure VM.
-
-The current deployment also binds HTTP port 80 to the VM network interfaces. Azure NSG restricts inbound access to approved IP addresses. Direct HTTP connections are not encrypted.
-
-## 12. Deployment Validation
-
-**Environment: Azure Ubuntu VM**
-
-Navigate to the project root:
+Then confirm:
 
 ```bash
-cd ~/Internal_AI_Chat_Platform_Group02
+bash scripts/11-validate.sh     # expect 26 passed, 0 failed
 ```
 
-Run the validation script:
+## Reproducibility
+
+The environment was destroyed and rebuilt from this repository to prove it
+works. Observations worth knowing before you repeat it:
+
+- **`terraform destroy` is blocked by default.** The resource group contains
+  resources Terraform does not manage, and Azure refuses to delete a non-empty
+  group. `terraform/providers.tf` sets
+  `prevent_deletion_if_contains_resources = false` so destroy can complete.
+- **Azure OpenAI is soft-deleted, not destroyed.** Recreating under the same
+  name fails; you must restore it, which preserves the key:
+  put `"restore": true` in the account PUT body.
+- **Everything outside Terraform is lost.** AOAI, monitoring, the data disk
+  contents, and the admin account must be restored or recreated by hand.
+- **The public IP changes** on rebuild. Update `SITE_ADDRESS` and
+  `CORS_ALLOW_ORIGIN`, and re-add your client IP if `allowed_cidrs` drifted.
+
+To rebuild an existing database after a destroy, copy `webui.db` back to
+`/mnt/data/open-webui/` before starting the stack. That preserves the admin
+account, chats, and settings.
+
+## Teardown
 
 ```bash
-bash scripts/validate.sh
+# On the VM: stop the app but keep data
+bash scripts/12-cleanup.sh
+
+# From the machine with the repo: delete the Azure resources
+bash scripts/12-cleanup.sh --terraform
 ```
 
-The successfully tested deployment returned:
+`--terraform` deletes the resource group and therefore the Azure OpenAI account,
+model deployment, and all monitoring as well. It asks for confirmation and
+prints that warning first.
 
-```text
-Result: 0 failed, 0 warnings
-```
+## Scripts reference
 
-The validation result applies to the checks implemented in `validate.sh`.
-
-## 13. Restart Open WebUI
-
-**Environment: Azure Ubuntu VM**
-
-Navigate to the project root:
-
-```bash
-cd ~/Internal_AI_Chat_Platform_Group02
-```
-
-Restart the existing application:
-
-```bash
-bash scripts/restart.sh
-```
-
-Recreate the container using Docker Compose v2:
-
-```bash
-bash scripts/restart.sh --recreate
-```
-
-The `--recreate` option uses Docker Compose to create or recreate the application container.
-
-The script performs application validation after restarting.
-
-## 14. Cleanup
-
-**Environment: Azure Ubuntu VM**
-
-Navigate to the project root:
-
-```bash
-cd ~/Internal_AI_Chat_Platform_Group02
-```
-
-Stop and remove the application container and Compose network:
-
-```bash
-bash scripts/cleanup.sh
-```
-
-The default cleanup preserves persistent application data.
-
-Do not use `--delete-volume` unless permanent data deletion is intended.
-
-## 15. Persistent Data
-
-Open WebUI stores its application data in the Docker volume:
-
-```text
-docker_open-webui-data
-```
-
-Testing confirmed that user accounts, conversation history, and uploaded documents remained available after application restart, container recreation, cleanup and redeployment, and Azure VM restart.
-
-The Docker named volume is separate from the attached Azure managed data disk.
-
-## 16. Troubleshooting
-
-**Environment: Azure Ubuntu VM**
-
-Navigate to the Docker directory:
-
-```bash
-cd ~/Internal_AI_Chat_Platform_Group02/docker
-```
-
-Check the container status:
-
-```bash
-docker compose ps
-```
-
-View application logs:
-
-```bash
-docker compose logs --tail=100 open-webui
-```
-
-Check the application health endpoint using an HTTP GET request:
-
-```bash
-curl -fsS http://localhost/health
-```
-
-To run the full deployment validation, navigate to the project root:
-
-```bash
-cd ~/Internal_AI_Chat_Platform_Group02
-```
-
-Then run:
-
-```bash
-bash scripts/validate.sh
-```
-
-## 17. Stop the Application
-
-**Environment: Azure Ubuntu VM**
-
-Navigate to the Docker directory:
-
-```bash
-cd ~/Internal_AI_Chat_Platform_Group02/docker
-```
-
-To stop the application while preserving persistent storage:
-
-```bash
-docker compose down
-```
-
-The Docker volume remains available for subsequent deployments.
-
-## 18. Deployment Notes
-
-- Azure infrastructure is managed using Terraform.
-- The VM environment is prepared using Bash automation.
-- Docker Compose v2 is used for application deployment and lifecycle management.
-- Open WebUI is accessed through an SSH Tunnel for administrative testing.
-- Application data is preserved using a persistent Docker volume.
-- Deployment validation is performed using `validate.sh`.
-- The first-time deployment workflow has been documented, but complete end-to-end automation from a fresh VM has not yet been verified.
-- HTTPS/TLS is not currently configured for direct web access.
-- The Gemini API is an external AI service, so data sent to the model is processed outside the Azure VM.
+| Script | Runs on | Purpose |
+|---|---|---|
+| `00-prepare.sh` | VM | OS updates, UFW baseline, format + mount the data disk |
+| `01-install-docker.sh` | VM | Docker Engine and Compose plugin |
+| `02-deploy.sh` | VM | Pull images and `compose up -d` |
+| `03-validate.sh` | VM | Container and HTTPS smoke test |
+| `04-access-check.sh` | VM | Phase 9 access control checks |
+| `backup.sh` | VM | Back up / restore `/mnt/data/open-webui` |
+| `10-harden.sh` | VM | SSH, UFW, fail2ban, log rotation, image pinning checks |
+| `11-validate.sh` | VM | Full system health check (26 checks) |
+| `11-restart.sh` | VM | Ordered restart with verification |
+| `12-cleanup.sh` | VM / machine | App teardown; `--terraform` for Azure resources |
+| `99-cleanup.sh` | VM | Legacy minimal teardown |

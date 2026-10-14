@@ -1,62 +1,119 @@
-# Employee User Guide
+# Employee guide
 
-## Overview
+For people using the chat platform. No technical knowledge needed.
 
-This guide explains how employees can use the Internal AI Chat Platform based on Open WebUI for daily tasks, document summarization, and AI-assisted work.
+## Getting access
 
-## 1. Access Open WebUI
+1. Ask the administrator to add your public IP to the allow-list. Find it at
+   [api.ipify.org](https://api.ipify.org) and send it to them.
+2. Wait for them to confirm.
+3. Open the site address the administrator gives you, for example
+   `https://<the address your administrator gives you>`.
 
-1. Open the platform using the secure access method provided by the IT administrator.
-2. Enter your registered email and password.
-3. Click **Sign In**.
+> **Your browser will show a warning** the first time, something like
+> "Your connection is not private" or "NET::ERR_CERT_AUTHORITY_INVALID".
+> This is expected. The site uses a private certificate rather than one issued
+> by a public authority, because it is restricted to a known list of IP
+> addresses. Click **Advanced** → **Continue** to proceed. Your traffic is
+> still encrypted.
 
-Employee accounts are created and managed by the administrator.
+If the page never loads at all, your IP is probably not on the list yet — tell
+the administrator, along with the IP from step 1.
 
-## 2. Start an AI Conversation
+## Signing in
 
-1. Click **New Chat**.
-2. Select an available AI model.
-3. Enter your question or request.
-4. Submit the message to receive an AI-generated response.
+Enter the email address and password the administrator gave you, then **Sign
+in**.
 
-Available models depend on administrator permissions.
+## Waiting for approval
 
-## 3. Upload and Analyze Documents
+New accounts are created in a **pending** state. Until an administrator
+approves it, you can sign in but cannot chat — you will see a message saying
+your account is waiting for approval. The administrator approves accounts in
+the admin panel. You do not need to do anything except wait.
 
-1. Start a new conversation.
-2. Click the **+** button and select the file upload option.
-3. Upload your document.
-4. Ask the AI assistant to summarize or analyze the content.
+## Having a conversation
 
-**Example Prompt:**
+Type a message in the box at the bottom and press **Enter**. Use
+**Shift + Enter** for a new line without sending.
 
-"Summarize this report and identify the main issue, business impact, and recommended actions."
+- **New chat** starts a fresh conversation.
+- The **sidebar** lists your previous chats; click one to reopen it.
+- **Stop** (the square button) cancels a reply that is taking too long.
 
-## 4. Conversation History
+## Uploading a document
 
-- Previous conversations are saved automatically.
-- Employees can reopen conversations from the chat history.
-- Uploaded documents and responses remain available in saved conversations.
-- Users cannot access other users' private conversations.
+Drag a file into the message box, or click the **+** next to it. Supported
+formats include PDF, Word documents, text and Markdown files.
 
-## 5. Security Guidelines
+Once uploaded, ask questions about it directly, such as:
 
-- Keep your login credentials private.
-- Do not share passwords or API keys.
-- Upload only documents approved for AI processing.
-- AI requests may be processed by an external AI provider.
-- Review AI-generated responses before using them for business decisions.
-- Sign out when finished using the platform.
+- "Summarise this document."
+- "What are the key dates in this contract?"
+- "List the action items for my team."
 
-## 6. Troubleshooting
+Uploaded documents are stored on the platform's server. **Do not upload
+anything confidential** — it persists on the server, and administrators can
+access the server.
 
-| Issue | Recommended Action |
+## Changing your password
+
+**Settings** (the icon in the sidebar) → **Account** → **Password**.
+
+## Things that will not work, and why
+
+| If you see | It means |
 |---|---|
-| Unable to sign in | Verify credentials or contact the administrator |
-| No AI models available | Request model access from the administrator |
-| AI response unavailable | Try again later or contact the administrator |
-| Cannot access the platform | Verify the approved connection method |
+| "You do not have permission" on every action | Your account is still pending approval |
+| A "Sign up" button, but you cannot chat | Registration is open, but new accounts need admin approval before they can do anything |
+| Nothing loads when you click a link | Connection issue — see below |
+| Certificate warning every time | Expected for this deployment; bypass it once per browser |
 
-## Conclusion
+## When the site is offline
 
-Open WebUI provides employees with an accessible interface for AI-assisted conversations, document analysis, and daily productivity tasks within the organization's configured access controls.
+The server is switched off automatically every night at **22:00 (Arab Standard
+Time)** to keep hosting costs down. If the site is unreachable outside working
+hours, it may just be switched off — contact the administrator.
+
+## Privacy
+
+- Prompts, responses, and uploaded documents are stored on the platform's
+  server, not in your browser.
+- Administrators can access that server and its contents.
+- The platform sends your prompts to the Azure OpenAI service to generate
+  replies.
+- Chats survive restarts and server reboots, but they are not backed up
+  off-site automatically.
+
+## Asking for help
+
+Give the administrator:
+
+1. What you were doing.
+2. The exact message, copied and pasted.
+3. A screenshot.
+4. The result of opening `https://api.ipify.org` in the same browser, so they
+   can check your IP is still allowed.
+
+## Frequently asked
+
+**Can I invite colleagues?**
+Yes — if their public IP is already allowed, they can register themselves using
+the **Sign up** button on the login page. Their account will be waiting for
+approval until an administrator accepts it. If their IP is not allowed, the
+site will not load for them at all, so send it to the administrator first.
+
+**Can I use this on my phone?**
+Yes, if your phone's public IP is on the allow-list. Note that mobile networks
+frequently change IP addresses, so access can stop working without warning —
+ask the administrator to allow your mobile network's range.
+
+**Can I get the app for my phone or laptop?**
+No. It is a web application; use a browser.
+
+**Why is it so slow sometimes?**
+The server is small and is switched off overnight. Start-up after it has been
+off takes a minute or two.
+
+**Can I use a different language?**
+The interface follows your browser's language setting where supported.

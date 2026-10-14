@@ -1,0 +1,41 @@
+# Caddyfile — the only public entry point to Open WebUI
+#
+# open-webui publishes NO host port (see docker-compose.yml: it uses
+# `expose`, not `ports`), so this proxy is the sole way in.
+#
+# No domain name is used: the NSG only allows a handful of IPs anyway, so a
+# publicly-trusted certificate (Let's Encrypt) is not worth the extra
+# complexity — it would also require opening port 80 to Let's Encrypt's
+# validation servers, which conflicts with the IP allow-list.
+#
+# "tls internal" makes Caddy generate its own local CA and a certificate for
+# SITE_ADDRESS. Browsers will show a "not secure" / self-signed warning the
+# first time — that is expected. Traffic is still encrypted.
+#
+# SITE_ADDRESS comes from docker/.env (the VM's static public IP, which
+# terraform prints as the `public_ip` output). "localhost" is included so the
+# tunnel test `ssh -L 8080:localhost:443 ...` still gets a matching cert,
+# and default_sni makes Caddy present the right certificate when a client
+# connects straight to the IP without sending SNI.
+#
+# If the project later gets a real domain name AND agrees to open port 80/443
+# to the public for certificate issuance, drop SITE_ADDRESS from .env, put the
+# domain here, and remove "tls internal" for automatic HTTPS.
+
+{
+	default_sni {$SITE_ADDRESS}
+}
+
+{$SITE_ADDRESS}, localhost {
+	tls internal
+
+	# TLS terminates here. Open WebUI itself only speaks cleartext on the
+	# internal docker network, so it must never be published to the host.
+	reverse_proxy open-webui:8080
+}
+
+# Plain HTTP exists only to bounce clients to HTTPS. The NSG does not allow
+# port 80 from outside, so this is reachable from the VM and the tunnel only.
+:80 {
+	redir https://{host}{uri} permanent
+}
