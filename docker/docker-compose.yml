@@ -1,0 +1,48 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main@sha256:8b432fe0a65b91116afc7961365c6cca5379cc923171386a96691f3471f3cae9
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_BASE_URL=${OPENAI_API_BASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+
+      - WEBUI_AUTH=true
+      - ENABLE_SIGNUP=true
+      - DEFAULT_USER_ROLE=pending
+
+      - WEBUI_SESSION_COOKIE_SECURE=true
+      - WEBUI_SESSION_COOKIE_SAME_SITE=strict
+
+
+      - CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN}
+    volumes:
+      - /mnt/data/open-webui:/app/backend/data
+    expose:
+      - "8080"
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - open-webui
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  caddy-data:
+  caddy-config:
