@@ -12,13 +12,13 @@ variable "project_name" {
 variable "location" {
   description = "Azure region. Verify VM size availability first (az vm list-skus)."
   type        = string
-  default     = "uaenorth"
+  default     = "centralus"
 }
 
 variable "vm_size" {
   description = "VM size. B2ms (2 vCPU / 8 GB) is enough when using an external model API."
   type        = string
-  default     = "Standard_B2ms"
+  default     = "Standard_D2s_v7"
 }
 
 variable "admin_username" {
