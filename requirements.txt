@@ -1,0 +1,36 @@
+# Internal AI Chat Platform (Group 02) - project dependencies
+#
+# This is an infrastructure project (Terraform + Bash + Docker Compose).
+# It has NO Python package dependencies, so `pip install -r requirements.txt`
+# installs nothing. The tools it needs are listed below.
+
+# ---------------------------------------------------------------------------
+# On the operator's machine (install these yourself)
+# ---------------------------------------------------------------------------
+# terraform        >= 1.6.0      https://developer.hashicorp.com/terraform/install
+#   hashicorp/azurerm provider ~> 4.0 (4.81.0 pinned in terraform/.terraform.lock.hcl,
+#   downloaded automatically by `terraform init`)
+# azure-cli        >= 2.60       https://learn.microsoft.com/cli/azure/install-azure-cli
+# openssh-client   any recent    ssh, scp, ssh-keygen (built into Windows 10/11, macOS, Linux)
+# git              any recent
+# bash             any recent    only for `scripts/12-cleanup.sh --terraform` (Git Bash on Windows)
+
+# ---------------------------------------------------------------------------
+# On the Azure VM (installed automatically by the scripts)
+# ---------------------------------------------------------------------------
+# Ubuntu Server 24.04 LTS                  VM image, set in terraform/main.tf
+# docker-ce, docker-compose-plugin         scripts/01-install-docker.sh
+# ufw, unattended-upgrades, curl, gnupg    scripts/00-prepare.sh
+# fail2ban                                 scripts/10-harden.sh
+
+# ---------------------------------------------------------------------------
+# Container images (pinned by digest in docker/docker-compose.yml)
+# ---------------------------------------------------------------------------
+# ghcr.io/open-webui/open-webui:main@sha256:8b432fe0a65b91116afc7961365c6cca5379cc923171386a96691f3471f3cae9
+# caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+
+# ---------------------------------------------------------------------------
+# Cloud services
+# ---------------------------------------------------------------------------
+# Azure subscription with permission to create VMs and Azure OpenAI resources
+# Azure OpenAI deployment: gpt-5-mini (model version 2025-08-01, GlobalStandard)
