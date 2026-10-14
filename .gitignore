@@ -13,3 +13,5 @@ id_*
 .env
 **/.env
 *.env.bak
+.venv/
+.vscode/
